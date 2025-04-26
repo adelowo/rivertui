@@ -1,6 +1,7 @@
-package tui
+package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,11 @@ import (
 	"time"
 
 	"github.com/adelowo/rivertui/config"
+	"github.com/adelowo/rivertui/internal/tui"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -53,6 +59,29 @@ func Execute() error {
 			}
 
 			return cfg.Validate()
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			poolConfig, err := pgxpool.ParseConfig(cfg.Database.DSN)
+			if err != nil {
+				return fmt.Errorf("error parsing db config: %w", err)
+			}
+
+			dbPool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+			if err != nil {
+				return fmt.Errorf("error connecting to db: %w", err)
+			}
+
+			client, err := river.NewClient(riverpgxv5.New(dbPool), &river.Config{})
+			if err != nil {
+				return err
+			}
+
+			_ = client
+
+			p := tea.NewProgram(tui.New(client))
+
+			_, err = p.Run()
+			return err
 		},
 	}
 
