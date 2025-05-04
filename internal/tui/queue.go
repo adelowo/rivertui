@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/dustin/go-humanize"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 )
@@ -50,6 +52,20 @@ func NewQueueModel(client *river.Client[pgx.Tx]) QueueModel {
 		table.WithHeight(7),
 	)
 
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+
+	t.SetStyles(s)
+
 	queues, err := client.QueueList(context.Background(), river.NewQueueListParams())
 	if err != nil {
 		panic(err.Error())
@@ -65,7 +81,7 @@ func NewQueueModel(client *river.Client[pgx.Tx]) QueueModel {
 
 		rows = append(rows, table.Row{
 			queue.Name,
-			queue.CreatedAt.String(),
+			humanize.Time(queue.CreatedAt),
 			status.String(),
 		})
 	}

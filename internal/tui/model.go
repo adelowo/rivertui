@@ -37,6 +37,7 @@ func New(client *river.Client[pgx.Tx]) Model {
 }
 
 func (m Model) Init() tea.Cmd {
+	tea.SetWindowTitle("rivertui")
 	return nil
 }
 
@@ -53,6 +54,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keyMaps.quit):
 			return m, tea.Quit
+
+		case key.Matches(msg, m.keyMaps.blurTable):
+
+			if m.queueModel.table.Focused() {
+				m.queueModel.table.Blur()
+			} else {
+				m.queueModel.table.Focus()
+			}
 
 		case key.Matches(msg, m.keyMaps.switchTabs):
 
@@ -87,13 +96,12 @@ func (m Model) View() string {
 
 	switch m.activeTab {
 	case QueuesTab:
-		s += m.queueModel.View()
+		return s + m.queueModel.View()
 	case JobsTab:
-		s += m.renderJobs()
+		return s + m.renderJobs()
+	default:
+		return s
 	}
-
-	s += "\nPress 'tab' to switch tabs, 'q' to quit\n"
-	return s
 }
 
 func (m Model) tabContent(title string, tab Tab, activeStyle, inactiveStyle lipgloss.Style) string {
