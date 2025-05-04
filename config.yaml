@@ -1,0 +1,2 @@
+database:
+  dsn: postgres://postgres:password@localhost:5432/jobs?sslmode=disable

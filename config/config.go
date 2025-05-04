@@ -12,18 +12,12 @@ type Config struct {
 		Mode LogMode `yaml:"mode" mapstructure:"mode"`
 	} `yaml:"logging" mapstructure:"logging"`
 
-	Frontend struct {
-		AppURL string `mapstructure:"app_url" yaml:"app_url"`
-	} `mapstructure:"frontend" yaml:"frontend"`
-
 	Database struct {
-		Postgres struct {
-			DSN        string `yaml:"dsn" mapstructure:"dsn"`
-			LogQueries bool   `yaml:"log_queries" mapstructure:"log_queries"`
-			// How much timeout should be used to run queries agains the db or the
-			// context dies
-			QueryTimeout time.Duration `yaml:"query_timeout" mapstructure:"query_timeout"`
-		} `yaml:"postgres" mapstructure:"postgres"`
+		DSN        string `yaml:"dsn" mapstructure:"dsn"`
+		LogQueries bool   `yaml:"log_queries" mapstructure:"log_queries"`
+		// How much timeout should be used to run queries agains the db or the
+		// context dies
+		QueryTimeout time.Duration `yaml:"query_timeout" mapstructure:"query_timeout"`
 	} `yaml:"database" mapstructure:"database"`
 }
 

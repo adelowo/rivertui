@@ -71,12 +71,14 @@ func Execute() error {
 				return fmt.Errorf("error connecting to db: %w", err)
 			}
 
+			if err := dbPool.Ping(context.Background()); err != nil {
+				return err
+			}
+
 			client, err := river.NewClient(riverpgxv5.New(dbPool), &river.Config{})
 			if err != nil {
 				return err
 			}
-
-			_ = client
 
 			p := tea.NewProgram(tui.New(client))
 

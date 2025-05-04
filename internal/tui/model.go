@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jackc/pgx/v5"
@@ -14,24 +15,24 @@ import (
 type Tab int
 
 const (
-	QueuesTab Tab = iota
-	JobsTab
+	JobsTab Tab = iota
+	QueuesTab
 	ClientsTab
 )
 
 type Model struct {
-	activeTab   Tab
-	queueModel  QueueModel
-	jobModel    JobModel
-	clientModel ClientModel
+	activeTab  Tab
+	queueModel QueueModel
+	jobModel   JobModel
+	keyMaps    *tuiKeyMaps
 }
 
 func New(client *river.Client[pgx.Tx]) Model {
 	return Model{
-		activeTab:   QueuesTab,
-		queueModel:  NewQueueModel(client),
-		jobModel:    NewJobModel(),
-		clientModel: NewClientModel(),
+		activeTab:  JobsTab,
+		queueModel: NewQueueModel(client),
+		jobModel:   NewJobModel(),
+		keyMaps:    newListKeyMap(),
 	}
 }
 
@@ -41,127 +42,65 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		switch {
+		case key.Matches(msg, m.keyMaps.up):
+			m.queueModel.table.MoveUp(1)
+
+		case key.Matches(msg, m.keyMaps.down):
+			m.queueModel.table.MoveDown(1)
+
+		case key.Matches(msg, m.keyMaps.quit):
 			return m, tea.Quit
-		case "tab":
+
+		case key.Matches(msg, m.keyMaps.switchTabs):
+
 			switch m.activeTab {
-			case QueuesTab:
-				m.activeTab = JobsTab
 			case JobsTab:
-				m.activeTab = ClientsTab
-			case ClientsTab:
 				m.activeTab = QueuesTab
-			}
-		case "up", "k":
-			switch m.activeTab {
+
 			case QueuesTab:
-				if m.queueModel.cursor > 0 {
-					m.queueModel.cursor--
-				}
-			case JobsTab:
-				if m.jobModel.cursor > 0 {
-					m.jobModel.cursor--
-				}
+				m.activeTab = ClientsTab
+
 			case ClientsTab:
-				if m.clientModel.cursor > 0 {
-					m.clientModel.cursor--
-				}
-			}
-		case "down", "j":
-			switch m.activeTab {
-			case QueuesTab:
-				if m.queueModel.cursor < len(m.queueModel.queueList.Items)-1 {
-					m.queueModel.cursor++
-				}
-			case JobsTab:
-				if m.jobModel.cursor < len(m.jobModel.Jobs)-1 {
-					m.jobModel.cursor++
-				}
-			case ClientsTab:
-				if m.clientModel.cursor < len(m.clientModel.Clients)-1 {
-					m.clientModel.cursor++
-				}
-			}
-		case "enter":
-			switch m.activeTab {
-			case QueuesTab:
-				m.queueModel.showDetails = !m.queueModel.showDetails
-				m.queueModel.selected = m.queueModel.cursor
-			case JobsTab:
-				m.jobModel.showDetails = !m.jobModel.showDetails
-				m.jobModel.selected = m.jobModel.cursor
-			case ClientsTab:
-				m.clientModel.showDetails = !m.clientModel.showDetails
-				m.clientModel.selected = m.clientModel.cursor
-			}
-		case "f":
-			if m.activeTab == JobsTab {
-				m.jobModel.showFilter = !m.jobModel.showFilter
-			}
-		case "1":
-			if m.activeTab == JobsTab && m.jobModel.showFilter {
-				m.jobModel.filter = StatusPending
-			}
-		case "2":
-			if m.activeTab == JobsTab && m.jobModel.showFilter {
-				m.jobModel.filter = StatusRunning
-			}
-		case "3":
-			if m.activeTab == JobsTab && m.jobModel.showFilter {
-				m.jobModel.filter = StatusCompleted
+				m.activeTab = JobsTab
+
 			}
 		}
 	}
+
 	return m, nil
 }
 
 func (m Model) View() string {
 	var s string
 
-	// Tab styling
-	activeTab := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FFF")).
-		Background(lipgloss.Color("#666"))
-	inactiveTab := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#888"))
+	tabRow := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		m.tabContent("Jobs", JobsTab, activeTab, inactiveTab),
+		m.tabContent("Queues", QueuesTab, activeTab, inactiveTab),
+		m.tabContent("Clients", ClientsTab, activeTab, inactiveTab),
+	)
 
-	// Render tabs
-	queuesTab := "Queues"
-	jobsTab := "Jobs"
-	clientsTab := "Clients"
+	s += tabRow + "\n\n"
 
-	switch m.activeTab {
-	case QueuesTab:
-		queuesTab = activeTab.Render(queuesTab)
-		jobsTab = inactiveTab.Render(jobsTab)
-		clientsTab = inactiveTab.Render(clientsTab)
-	case JobsTab:
-		queuesTab = inactiveTab.Render(queuesTab)
-		jobsTab = activeTab.Render(jobsTab)
-		clientsTab = inactiveTab.Render(clientsTab)
-	case ClientsTab:
-		queuesTab = inactiveTab.Render(queuesTab)
-		jobsTab = inactiveTab.Render(jobsTab)
-		clientsTab = activeTab.Render(clientsTab)
-	}
-
-	s += fmt.Sprintf("%s | %s | %s\n\n", queuesTab, jobsTab, clientsTab)
-
-	// Render content based on active tab
 	switch m.activeTab {
 	case QueuesTab:
 		s += m.queueModel.View()
 	case JobsTab:
 		s += m.renderJobs()
-	case ClientsTab:
-		s += m.renderClients()
 	}
 
 	s += "\nPress 'tab' to switch tabs, 'q' to quit\n"
 	return s
+}
+
+func (m Model) tabContent(title string, tab Tab, activeStyle, inactiveStyle lipgloss.Style) string {
+	if m.activeTab == tab {
+		return activeStyle.Render(title)
+	}
+	return inactiveStyle.Render(title)
 }
 
 func (m Model) renderJobs() string {
@@ -226,47 +165,4 @@ func (m Model) renderJobDetails() string {
 
 	s += "\nPress 'enter' to go back"
 	return s
-}
-
-func (m Model) renderClients() string {
-	if m.clientModel.showDetails && m.clientModel.selected >= 0 {
-		return m.renderClientDetails()
-	}
-
-	s := "ID\tCreated\tRunning\tStatus\n"
-	s += "──\t───────\t───────\t──────\n"
-
-	for i, client := range m.clientModel.Clients {
-		cursor := " "
-		if m.clientModel.cursor == i {
-			cursor = ">"
-		}
-		s += fmt.Sprintf("%s %s\t%s\t%d\t%s\n",
-			cursor,
-			client.ID,
-			client.CreatedAt.Format("2006-01-02 15:04"),
-			client.Running,
-			client.Status)
-	}
-	return s
-}
-
-func (m Model) renderClientDetails() string {
-	client := m.clientModel.Clients[m.clientModel.selected]
-	return fmt.Sprintf("Client Details\n\n"+
-		"ID: %s\n"+
-		"Created At: %s\n"+
-		"Running Jobs: %d\n"+
-		"Status: %s\n\n"+
-		"Concurrency Settings:\n"+
-		"Global Limit: unlimited\n"+
-		"Local Limit: 0\n\n"+
-		"Partitioning:\n"+
-		"Partition by kind: disabled\n"+
-		"Partition by args: disabled\n\n"+
-		"Press 'enter' to go back",
-		client.ID,
-		client.CreatedAt.Format("2006-01-02 15:04:05"),
-		client.Running,
-		client.Status)
 }

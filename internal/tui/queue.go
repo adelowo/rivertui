@@ -3,60 +3,81 @@ package tui
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 )
 
+// ENUM(paused,active)
+type QueueStatus string
+
 type Queue struct {
 	Name      string
-	CreatedAt time.Time
-	Available int
-	Running   int
-	Status    string
+	CreatedAt string
+	Status    QueueStatus
 }
 
-type QueueList struct {
-	Items  []Queue
-	client *river.Client[pgx.Tx]
+func (i Queue) Title() string { return "" }
+func (i Queue) Description() string {
+	return ""
 }
+
+func (i Queue) FilterValue() string { return i.Name }
 
 type QueueModel struct {
-	queueList   QueueList
+	client      *river.Client[pgx.Tx]
+	items       []Queue
 	cursor      int
 	selected    int
 	showDetails bool
+	table       table.Model
 }
 
 func NewQueueModel(client *river.Client[pgx.Tx]) QueueModel {
-	mockQueues := []Queue{
-		{
-			Name:      "default",
-			CreatedAt: time.Now().Add(-24 * time.Hour),
-			Available: 10,
-			Running:   5,
-			Status:    "active",
-		},
-		{
-			Name:      "high-priority",
-			CreatedAt: time.Now().Add(-12 * time.Hour),
-			Available: 15,
-			Running:   8,
-			Status:    "active",
-		},
+	columns := []table.Column{
+		{Title: "Name", Width: 10},
+		{Title: "Created at", Width: 10},
+		{Title: "Status", Width: 6},
 	}
 
-	client.QueueList(context.Background(), river.NewQueueListParams())
+	rows := []table.Row{}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(7),
+	)
+
+	queues, err := client.QueueList(context.Background(), river.NewQueueListParams())
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for _, queue := range queues.Queues {
+
+		var status = QueueStatusActive
+
+		if queue.PausedAt != nil {
+			status = QueueStatusPaused
+		}
+
+		rows = append(rows, table.Row{
+			queue.Name,
+			queue.CreatedAt.String(),
+			status.String(),
+		})
+	}
+
+	t.SetRows(rows)
 
 	return QueueModel{
-		queueList: QueueList{
-			Items:  mockQueues,
-			client: client,
-		},
 		cursor:      0,
+		table:       t,
 		selected:    -1,
 		showDetails: false,
+		client:      client,
 	}
 }
 
@@ -68,36 +89,14 @@ func (m QueueModel) View() string {
 }
 
 func (m QueueModel) renderList() string {
-	s := "Name\tCreated At\tAvailable\tRunning\tStatus\n"
-	s += "────\t──────────\t─────────\t───────\t──────\n"
-
-	for i, queue := range m.queueList.Items {
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
-		}
-		s += fmt.Sprintf("%s %s\t%s\t%d\t%d\t%s\n",
-			cursor,
-			queue.Name,
-			queue.CreatedAt.Format("2006-01-02 15:04"),
-			queue.Available,
-			queue.Running,
-			queue.Status)
-	}
-	return s
+	return baseStyle.Render(m.table.View()) + "\n"
 }
 
 func (m QueueModel) renderDetails() string {
-	queue := m.queueList.Items[m.selected]
+	queue := m.items[m.selected]
 	return fmt.Sprintf("Queue Details - %s\n\n"+
 		"Created At: %s\n"+
-		"Available: %d\n"+
-		"Running: %d\n"+
-		"Status: %s\n\n"+
 		"Press 'enter' to go back",
 		queue.Name,
-		queue.CreatedAt.Format("2006-01-02 15:04:05"),
-		queue.Available,
-		queue.Running,
 		queue.Status)
 }

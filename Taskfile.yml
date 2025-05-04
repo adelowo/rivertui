@@ -1,0 +1,17 @@
+version: "3"
+
+tasks:
+  tidy:
+    desc: Tidy up Go module dependencies
+    cmds:
+      - go mod tidy
+
+  run:
+    desc: Run the TUI
+    cmds:
+      - go run cmd/*.go
+
+  env:
+    desc: Export environment variables from Infisical
+    cmds:
+      - infisical export --env=dev > .env
